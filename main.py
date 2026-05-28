@@ -1,4 +1,3 @@
-```python
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -699,4 +698,3 @@ elif run_backtest_button and uploaded_files:
                 "executed_trades.csv",
                 "text/csv"
             )
-```
