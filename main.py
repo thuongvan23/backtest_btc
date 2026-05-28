@@ -5,39 +5,45 @@ import matplotlib.pyplot as plt
 from datetime import date
 import io
 
-st.set_page_config(page_title="Crypto Spot Backtest", layout="wide")
+st.set_page_config(page_title="Crypto Backtest Strategy System", layout="wide")
 
 # =========================
 # FILE UPLOADER
 # =========================
 uploaded_files = st.file_uploader(
-    "Upload Crypto CSV Files",
+    "Tải lên các file dữ liệu crypto (CSV)",
     accept_multiple_files=True,
     type=['csv']
 )
 
 # =========================
-# SIDEBAR
+# SIDEBAR CONFIG FORM
 # =========================
 with st.sidebar.form("config_form"):
 
-    st.header("⚙️ Crypto Spot Backtest")
+    st.header("⚙️ Cấu hình Backtest Crypto")
 
     INITIAL_CAPITAL = st.number_input(
         "Initial Capital",
-        min_value=100,
-        value=10000,
-        step=1000
+        min_value=0.0,
+        value=500_000_000.0,
+        step=100_000_000.0,
+        format="%.2f"
     )
+
+    st.write(f"Initial Capital: {INITIAL_CAPITAL:,.2f}")
 
     MAX_POSITION_SIZE = st.number_input(
         "Max Position Size",
-        min_value=10,
-        value=1000,
-        step=100
+        min_value=0.0,
+        value=100_000_000.0,
+        step=10_000_000.0,
+        format="%.2f"
     )
 
-    fee_rate = st.slider(
+    st.write(f"Max Position Size: {MAX_POSITION_SIZE:,.2f}")
+
+    TRADING_FEE = st.slider(
         "Trading Fee (%)",
         0.0,
         1.0,
@@ -46,48 +52,52 @@ with st.sidebar.form("config_form"):
     ) / 100
 
     start_date = st.date_input(
-        "Start Date",
-        value=date(2020, 1, 1)
+        "Ngày bắt đầu backtest",
+        value=date(2000, 1, 1),
+        min_value=date(1990, 1, 1),
+        max_value=date.today()
     )
 
     end_date = st.date_input(
-        "End Date",
-        value=date.today()
+        "Ngày kết thúc backtest",
+        value=date.today(),
+        min_value=date(1990, 1, 1),
+        max_value=date.today()
     )
 
     nen_tich_luy = st.slider(
-        "Base Max Range %",
+        "Nền tích lũy max (%)",
         0.01,
-        0.20,
-        0.05,
+        0.10,
+        0.04,
         step=0.01
     )
 
     min_days = st.number_input(
-        "Min Base Days",
+        "Số candle tích lũy tối thiểu",
         value=4
     )
 
     max_days = st.number_input(
-        "Max Base Days",
-        value=10
+        "Số candle tích lũy tối đa",
+        value=9
     )
 
     breakout_days_check = st.number_input(
-        "Breakout Days Check",
+        "Breakout candles check",
         value=3
     )
 
     max_chase = st.slider(
-        "Max Chase",
+        "Max chase limit",
         1.0,
-        1.2,
-        1.05,
+        1.1,
+        1.04,
         step=0.01
     )
 
     target = st.slider(
-        "Take Profit",
+        "Target (TP)",
         1.0,
         3.0,
         1.4,
@@ -95,52 +105,26 @@ with st.sidebar.form("config_form"):
     )
 
     stoploss = st.slider(
-        "Stoploss",
+        "Stoploss (SL)",
         0.5,
         1.0,
-        0.93,
+        0.95,
         step=0.01
     )
 
     min_hold_days = st.number_input(
-        "Min Hold Candles",
-        value=0
+        "Min hold candles",
+        value=14
     )
 
     max_hold_days = st.number_input(
-        "Max Hold Candles",
-        value=200
+        "Max hold candles",
+        value=10000
     )
 
     avoid_duplicate = st.number_input(
-        "Avoid Duplicate Candles",
-        value=5
-    )
-
-    min_volume_ratio = st.slider(
-        "Min Volume Ratio",
-        0.5,
-        10.0,
-        1.5,
-        step=0.1
-    )
-
-    max_volume_ratio = st.slider(
-        "Max Volume Ratio",
-        1.0,
-        20.0,
-        8.0,
-        step=0.5
-    )
-
-    use_atr = st.checkbox("Use ATR Stoploss", value=False)
-
-    atr_multiplier = st.slider(
-        "ATR Multiplier",
-        0.5,
-        5.0,
-        2.0,
-        step=0.1
+        "Avoid duplicate candles",
+        value=10
     )
 
     run_backtest_button = st.form_submit_button("🚀 RUN BACKTEST")
@@ -152,7 +136,7 @@ start_date = pd.to_datetime(start_date)
 end_date = pd.to_datetime(end_date)
 
 if start_date >= end_date:
-    st.error("Start date must be smaller than end date")
+    st.error("Ngày bắt đầu phải nhỏ hơn ngày kết thúc")
     st.stop()
 
 # =========================
@@ -168,86 +152,13 @@ BACKTEST_CONFIG = {
     "target": target,
     "stoploss": stoploss,
     "min_hold_days": int(min_hold_days),
-    "max_hold_days": int(max_hold_days),
     "avoid_duplicate": int(avoid_duplicate),
-    "min_volume_ratio": min_volume_ratio,
-    "max_volume_ratio": max_volume_ratio,
-    "use_atr": use_atr,
-    "atr_multiplier": atr_multiplier
+    "max_hold_days": int(max_hold_days)
 }
 
-# =========================
-# READ FILE
-# =========================
-def read_crypto_file(file_wrapper):
-
-    df = pd.read_csv(file_wrapper)
-
-    rename_map = {
-        "timestamp": "Date",
-        "date": "Date",
-        "open": "Open",
-        "high": "High",
-        "low": "Low",
-        "close": "Close",
-        "volume": "Volume"
-    }
-
-    df.rename(columns=rename_map, inplace=True)
-
-    df.columns = [x.capitalize() for x in df.columns]
-
-    df['Date'] = pd.to_datetime(df['Date'])
-
-    numeric_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
-
-    for col in numeric_cols:
-        df[col] = pd.to_numeric(df[col], errors='coerce')
-
-    df.dropna(inplace=True)
-
-    df = df.sort_values('Date', kind='mergesort')
-
-    df.set_index('Date', inplace=True)
-
-    # EMA
-    df['EMA21'] = df['Close'].ewm(span=21, adjust=False).mean()
-    df['EMA65'] = df['Close'].ewm(span=65, adjust=False).mean()
-
-    # Volume Ratio
-    df['Volume MA20'] = df['Volume'].rolling(20).mean()
-    df['Volume Ratio'] = df['Volume'] / df['Volume MA20']
-
-    # ATR
-    tr1 = df['High'] - df['Low']
-    tr2 = abs(df['High'] - df['Close'].shift(1))
-    tr3 = abs(df['Low'] - df['Close'].shift(1))
-
-    df['TR'] = np.maximum(tr1, np.maximum(tr2, tr3))
-    df['ATR14'] = df['TR'].rolling(14).mean()
-
-    return df
-
-# =========================
-# BACKTEST
-# =========================
-def run_backtest(
-    df,
-    stock_name,
-    nen_tich_luy,
-    so_ngay_tich_luy,
-    breakout_days_check,
-    max_chase,
-    target,
-    stoploss,
-    min_hold_days,
-    max_hold_days,
-    avoid_duplicate,
-    min_volume_ratio,
-    max_volume_ratio,
-    use_atr,
-    atr_multiplier
-):
+# ==================== LOGIC HÀM BACKTEST ====================
+def run_backtest(df, stock_name, nen_tich_luy, so_ngay_tich_luy, breakout_days_check,
+                 max_chase, target, stoploss, min_hold_days, max_hold_days, avoid_duplicate):
 
     trades = []
     last_breakout_idx = -1
@@ -257,7 +168,6 @@ def run_backtest(
         if i <= last_breakout_idx:
             continue
 
-        # Trend Filter
         if df['EMA21'].iloc[i] <= df['EMA65'].iloc[i]:
             continue
 
@@ -292,35 +202,14 @@ def run_backtest(
 
                 breakout_price = candle['Close']
 
-                # Breakout
                 if breakout_price <= highest:
                     continue
 
-                # Chase Filter
                 if breakout_price > highest * max_chase:
                     continue
 
-                # Volume Ratio Filter
-                vr = candle['Volume Ratio']
-
-                if vr < min_volume_ratio:
-                    continue
-
-                if vr > max_volume_ratio:
-                    continue
-
-                # TP/SL
-                if use_atr:
-
-                    atr = candle['ATR14']
-
-                    tp = breakout_price + atr * atr_multiplier * 2
-                    sl = breakout_price - atr * atr_multiplier
-
-                else:
-
-                    tp = breakout_price * target
-                    sl = breakout_price * stoploss
+                tp = breakout_price * target
+                sl = breakout_price * stoploss
 
                 result = "HOLD"
 
@@ -340,25 +229,21 @@ def run_backtest(
 
                     row = future.iloc[j]
 
-                    # Stoploss
+                    # SL ưu tiên trước
                     if row['Low'] <= sl:
-
                         result = "STOPLOSS"
                         exit_price = sl
                         exit_date = future.index[j]
-
                         break
 
-                    # Take Profit
+                    # TP
                     if row['High'] >= tp:
-
                         result = "TAKE_PROFIT"
                         exit_price = tp
                         exit_date = future.index[j]
-
                         break
 
-                # Force Exit
+                # FORCE EXIT
                 if exit_price is None:
 
                     forced_exit_row = df.iloc[end_exit_idx]
@@ -368,27 +253,20 @@ def run_backtest(
 
                     result = "MAX_HOLD_EXIT"
 
-                profit = (
-                    exit_price - breakout_price
-                ) / breakout_price
-
                 trades.append({
-
                     'Buy Date': df.index[breakout_idx],
                     'Buy Price': breakout_price,
-                    'Exit Date': exit_date,
-                    'Exit Price': exit_price,
-                    'Profit': profit,
                     'Result': result,
+                    'Exit Price': exit_price,
+                    'Profit': (exit_price - breakout_price) / breakout_price,
+                    'Exit Date': exit_date,
                     'Stock': stock_name,
-                    'Volume Ratio': vr
-
+                    'Hold time': exit_date - df.index[breakout_idx]
                 })
 
                 last_breakout_idx = breakout_idx + avoid_duplicate
 
                 trade_found = True
-
                 break
 
             if trade_found:
@@ -396,62 +274,128 @@ def run_backtest(
 
     return pd.DataFrame(trades)
 
-# =========================
-# STATISTICS
-# =========================
+# ==================== LOGIC ĐỌC FILE & LÀM SẠCH ====================
+def read_stock_file(file_wrapper, start_date, end_date):
+
+    df = pd.read_csv(file_wrapper)
+
+    df = df.rename(columns={
+        "Ngày": "Date",
+        "Lần cuối": "Close",
+        "Mở": "Open",
+        "Cao": "High",
+        "Thấp": "Low",
+        "KL": "Volume",
+        "% Thay đổi": "Change"
+    })
+
+    df['Date'] = pd.to_datetime(df['Date'], format='%d/%m/%Y')
+
+    def clean_price(x):
+        return float(str(x).replace(',', ''))
+
+    def clean_volume(x):
+
+        x = str(x).strip()
+
+        if 'B' in x:
+            return float(x.replace('B', '')) * 1_000_000_000
+
+        if 'M' in x:
+            return float(x.replace('M', '')) * 1_000_000
+
+        if 'K' in x:
+            return float(x.replace('K', '')) * 1_000
+
+        return float(x)
+
+    for col in ['Open', 'High', 'Low', 'Close']:
+        df[col] = df[col].apply(clean_price)
+
+    df['Volume'] = df['Volume'].apply(clean_volume)
+
+    df = df.sort_values('Date', kind='mergesort')
+
+    df.set_index('Date', inplace=True)
+
+    df['EMA21'] = df['Close'].ewm(span=21, adjust=False).mean()
+    df['EMA65'] = df['Close'].ewm(span=65, adjust=False).mean()
+
+    return df
+
+# ==================== THỐNG KÊ ====================
 def calculate_statistics(trades_df):
 
     if len(trades_df) == 0:
         return None
 
-    total = len(trades_df)
+    closed_trades = trades_df.copy()
 
-    wins = trades_df[trades_df['Profit'] > 0]
-    losses = trades_df[trades_df['Profit'] <= 0]
+    if len(closed_trades) == 0:
+        return None
 
-    winrate = len(wins) / total * 100
+    closed_trades['Return %'] = (
+        (
+            closed_trades['Exit Price']
+            - closed_trades['Buy Price']
+        )
+        / closed_trades['Buy Price']
+    ) * 100
 
-    avg_win = wins['Profit'].mean() * 100 if len(wins) > 0 else 0
-    avg_loss = abs(losses['Profit'].mean()) * 100 if len(losses) > 0 else 0
+    wins = closed_trades[closed_trades['Return %'] > 0]
+    losses = closed_trades[closed_trades['Return %'] <= 0]
 
-    gross_profit = wins['Profit'].sum()
-    gross_loss = abs(losses['Profit'].sum())
+    total_trades = len(closed_trades)
+
+    win_count = len(wins)
+    loss_count = len(losses)
+
+    winrate = win_count / total_trades
+
+    avg_win = wins['Return %'].mean() if win_count > 0 else 0
+    avg_loss = abs(losses['Return %'].mean()) if loss_count > 0 else 0
+
+    expectancy = (
+        (winrate * avg_win)
+        - ((1 - winrate) * avg_loss)
+    )
+
+    gross_profit = wins['Return %'].sum()
+    gross_loss = abs(losses['Return %'].sum())
 
     profit_factor = (
         gross_profit / gross_loss
         if gross_loss != 0 else np.inf
     )
 
-    expectancy = (
-        (winrate / 100) * avg_win
-        -
-        (1 - winrate / 100) * avg_loss
+    rr_ratio = (
+        avg_win / avg_loss
+        if avg_loss != 0 else np.inf
     )
 
     return {
-        'Total Trades': total,
-        'Winrate %': round(winrate, 2),
+        'Total Trades': total_trades,
+        'Winrate %': round(winrate * 100, 2),
         'Average Win %': round(avg_win, 2),
         'Average Loss %': round(avg_loss, 2),
+        'RR Ratio': round(rr_ratio, 2),
         'Profit Factor': round(profit_factor, 2),
         'Expectancy %': round(expectancy, 2)
     }
 
-# =========================
-# MAIN UI
-# =========================
-st.title("📈 Crypto Spot Breakout Backtest")
+# ==================== GIAO DIỆN ====================
+st.title("📈 Crypto Backtest Strategy System")
 
 if run_backtest_button and not uploaded_files:
 
-    st.warning("Please upload CSV files")
+    st.warning("Vui lòng upload file CSV")
 
 elif run_backtest_button and uploaded_files:
 
     summary_results = []
     all_trades = []
 
-    st.info(f"Processing {len(uploaded_files)} files...")
+    st.info(f"Đang xử lý {len(uploaded_files)} tệp tin...")
 
     for file in uploaded_files:
 
@@ -459,7 +403,11 @@ elif run_backtest_button and uploaded_files:
 
             stock_name = file.name.replace(".csv", "")
 
-            df = read_crypto_file(file)
+            df = read_stock_file(
+                file,
+                start_date,
+                end_date
+            )
 
             trades_df = run_backtest(
                 df,
@@ -479,16 +427,13 @@ elif run_backtest_button and uploaded_files:
             stats = calculate_statistics(trades_df)
 
             if stats is not None:
-
-                stats['Coin'] = stock_name
-
+                stats['Stock'] = stock_name
                 summary_results.append(stats)
 
         except Exception as e:
+            st.error(f"Lỗi khi xử lý file {file.name}: {e}")
 
-            st.error(f"Error {file.name}: {e}")
-
-    # SUMMARY
+    # ==================== SUMMARY ====================
     if len(summary_results) > 0:
 
         summary_df = pd.DataFrame(summary_results)
@@ -500,30 +445,190 @@ elif run_backtest_button and uploaded_files:
 
         st.header("🏆 FINAL SUMMARY")
 
-        st.dataframe(summary_df, use_container_width=True)
-
-    # ALL TRADES
-    if len(all_trades) > 0:
-
-        all_trades_df = pd.concat(all_trades, ignore_index=True)
-
-        st.header("📜 ALL TRADES")
-
         st.dataframe(
-            all_trades_df.sort_values(by='Buy Date'),
+            summary_df,
             use_container_width=True
         )
 
-        # =========================
-        # PORTFOLIO BACKTEST
-        # =========================
+        st.download_button(
+            "📥 Download backtest_summary.csv",
+            summary_df.to_csv(index=False).encode('utf-8'),
+            "backtest_summary.csv",
+            "text/csv"
+        )
+
+    else:
+        st.warning("Không có lệnh hợp lệ.")
+
+    # ==================== ALL TRADES ====================
+    if len(all_trades) > 0:
+
+        all_trades_df = pd.concat(
+            all_trades,
+            ignore_index=True
+        )
+
+        st.sidebar.warning(
+            f"Tổng số lệnh chiến lược sinh ra: {len(all_trades_df)}"
+        )
+
+        csv_buffer = io.StringIO()
+
+        all_trades_df.to_csv(csv_buffer, index=False)
+
+        csv_buffer.seek(0)
+
+        df_stats = pd.read_csv(csv_buffer)
+
+        df_stats['Buy Date'] = pd.to_datetime(df_stats['Buy Date'])
+        df_stats['Exit Date'] = pd.to_datetime(df_stats['Exit Date'])
+
+        df_stats['Hold Days'] = (
+            df_stats['Hold time']
+            .astype(str)
+            .str.extract('(\\d+)')
+            .astype(int)
+        )
+
+        df_stats['Year'] = df_stats['Buy Date'].dt.year
+        df_stats['Month'] = df_stats['Buy Date'].dt.month
+
+        st.header("📜 ALL TRADES HISTORY")
+
+        st.dataframe(
+            df_stats.sort_values(by='Buy Date').reset_index(drop=True),
+            use_container_width=True
+        )
+
+        # ==================== BASIC STATS ====================
+        total_t = len(df_stats)
+
+        wins_t = df_stats[df_stats['Profit'] > 0]
+        losses_t = df_stats[df_stats['Profit'] <= 0]
+
+        winrate_t = (
+            len(wins_t) / total_t * 100
+            if total_t > 0 else 0
+        )
+
+        avg_win_t = (
+            wins_t['Profit'].mean()
+            if len(wins_t) > 0 else 0
+        )
+
+        avg_loss_t = (
+            losses_t['Profit'].mean()
+            if len(losses_t) > 0 else 0
+        )
+
+        rr_t = (
+            abs(avg_win_t / avg_loss_t)
+            if avg_loss_t != 0 else np.inf
+        )
+
+        profit_factor_t = (
+            wins_t['Profit'].sum()
+            /
+            abs(losses_t['Profit'].sum())
+            if losses_t['Profit'].sum() != 0 else np.inf
+        )
+
+        expectancy_t = (
+            ((winrate_t / 100) * avg_win_t)
+            +
+            ((1 - winrate_t / 100) * avg_loss_t)
+        )
+
+        st.subheader("📊 BASIC STATS")
+
+        col1, col2, col3, col4, col5 = st.columns(5)
+
+        col1.metric("Total Trades", total_t)
+        col2.metric("Winrate", f"{winrate_t:.2f}%")
+        col3.metric("Profit Factor", f"{profit_factor_t:.2f}")
+        col4.metric("RR Ratio", f"{rr_t:.2f}")
+        col5.metric("Expectancy", f"{expectancy_t:.4f}")
+
+        # ==================== VISUALIZATION ====================
+        st.header("📊 VISUALIZATION")
+
+        v_col1, v_col2 = st.columns(2)
+
+        with v_col1:
+
+            st.subheader("Win vs Loss")
+
+            result_counts = df_stats['Result'].value_counts()
+
+            fig1, ax1 = plt.subplots(figsize=(5, 5))
+
+            ax1.pie(
+                result_counts.values,
+                labels=result_counts.index,
+                autopct='%1.1f%%'
+            )
+
+            st.pyplot(fig1)
+
+            plt.close(fig1)
+
+            st.subheader("Hold Time Distribution")
+
+            fig3, ax3 = plt.subplots(figsize=(6, 3.5))
+
+            ax3.hist(df_stats['Hold Days'], bins=30)
+
+            ax3.set_xlabel('Hold Days')
+            ax3.set_ylabel('Frequency')
+
+            st.pyplot(fig3)
+
+            plt.close(fig3)
+
+        with v_col2:
+
+            st.subheader("Trades Per Year")
+
+            trades_per_year = df_stats.groupby('Year').size()
+
+            fig2, ax2 = plt.subplots(figsize=(6, 3.5))
+
+            trades_per_year.plot(kind='bar', ax=ax2)
+
+            ax2.set_ylabel('Trades')
+
+            st.pyplot(fig2)
+
+            plt.close(fig2)
+
+            st.subheader("Average Profit By Month")
+
+            monthly_profit = df_stats.groupby('Month')['Profit'].mean()
+
+            fig4, ax4 = plt.subplots(figsize=(6, 3.5))
+
+            monthly_profit.plot(kind='bar', ax=ax4)
+
+            ax4.set_ylabel('Average Profit')
+
+            st.pyplot(fig4)
+
+            plt.close(fig4)
+
+        # ==================== PORTFOLIO BACKTEST ====================
+        st.header("💰 PORTFOLIO BACKTEST")
+
         cash = INITIAL_CAPITAL
 
         open_positions = []
 
         executed_trades = []
 
-        df_loop = all_trades_df.copy()
+        df_loop = df_stats.copy()
+
+        df_loop = df_loop.sort_values(
+            by='Stock'
+        ).reset_index(drop=True)
 
         df_loop = df_loop.sort_values(
             by='Buy Date',
@@ -534,89 +639,98 @@ elif run_backtest_button and uploaded_files:
 
             buy_date = row['Buy Date']
 
-            # Close positions
+            # Đóng vị thế cũ
             remaining_positions = []
 
             for pos in open_positions:
 
                 if pos['Exit Date'] <= buy_date:
-
                     cash += pos['Exit Value']
 
                 else:
-
                     remaining_positions.append(pos)
 
             open_positions = remaining_positions
 
+            # ==================== CRYPTO POSITION SIZE ====================
             buy_price = row['Buy Price']
 
-            # No lot size
-            position_size = min(
-                MAX_POSITION_SIZE,
-                cash
+            quantity = MAX_POSITION_SIZE / buy_price
+
+            quantity = round(quantity, 6)
+
+            if quantity <= 0:
+                continue
+
+            position_cost = quantity * buy_price
+
+            # Fee vào lệnh
+            entry_fee = position_cost * TRADING_FEE
+
+            total_entry_cost = position_cost + entry_fee
+
+            if cash < total_entry_cost:
+                continue
+
+            # Mua
+            cash -= total_entry_cost
+
+            exit_value = quantity * row['Exit Price']
+
+            # Fee thoát lệnh
+            exit_fee = exit_value * TRADING_FEE
+
+            pnl = (
+                exit_value
+                - position_cost
+                - entry_fee
+                - exit_fee
             )
 
-            if position_size <= 0:
-                continue
-
-            shares = position_size / buy_price
-
-            # Buy Fee
-            buy_fee = position_size * fee_rate
-
-            total_buy_cost = position_size + buy_fee
-
-            if cash < total_buy_cost:
-                continue
-
-            cash -= total_buy_cost
-
-            gross_exit_value = shares * row['Exit Price']
-
-            sell_fee = gross_exit_value * fee_rate
-
-            exit_value = gross_exit_value - sell_fee
-
-            pnl = exit_value - total_buy_cost
+            final_exit_value = exit_value - exit_fee
 
             open_positions.append({
                 'Exit Date': row['Exit Date'],
-                'Exit Value': exit_value
+                'Exit Value': final_exit_value
             })
 
             executed_trades.append({
-
                 'Buy Date': row['Buy Date'],
                 'Exit Date': row['Exit Date'],
-                'Coin': row['Stock'],
-                'Buy Price': buy_price,
+                'Stock': row['Stock'],
+                'Quantity': quantity,
+                'Buy Price': row['Buy Price'],
                 'Exit Price': row['Exit Price'],
-                'Position Size': position_size,
+                'Entry Fee': entry_fee,
+                'Exit Fee': exit_fee,
+                'Cost': total_entry_cost,
+                'Exit Value': final_exit_value,
                 'PnL': pnl,
-                'Profit %': pnl / position_size,
+                'Profit %': pnl / total_entry_cost,
                 'Cash After Buy': cash
-
             })
 
-        # Close all remaining
+        # ==================== ĐÓNG TOÀN BỘ VỊ THẾ ====================
         for pos in open_positions:
             cash += pos['Exit Value']
 
+        # ==================== KẾT QUẢ ====================
         if len(executed_trades) > 0:
 
             executed_df = pd.DataFrame(executed_trades)
 
+            total_profit = cash - INITIAL_CAPITAL
+
+            roi = (
+                total_profit
+                / INITIAL_CAPITAL
+            ) * 100
+
             executed_df = executed_df.sort_values(
                 by='Exit Date',
                 kind='mergesort'
-            )
+            ).reset_index(drop=True)
 
-            total_profit = cash - INITIAL_CAPITAL
-
-            roi = total_profit / INITIAL_CAPITAL * 100
-
-            # Equity Curve
             equity = INITIAL_CAPITAL
 
             equity_curve = []
@@ -629,36 +743,41 @@ elif run_backtest_button and uploaded_files:
 
             executed_df['Equity'] = equity_curve
 
-            executed_df['Peak'] = executed_df['Equity'].cummax()
+            executed_df['Peak'] = (
+                executed_df['Equity']
+                .cummax()
+            )
 
             executed_df['Drawdown'] = (
-                executed_df['Equity']
-                -
+                (
+                    executed_df['Equity']
+                    - executed_df['Peak']
+                )
+                /
                 executed_df['Peak']
-            ) / executed_df['Peak']
+            )
 
             max_drawdown = executed_df['Drawdown'].min()
 
-            st.header("💰 PORTFOLIO RESULT")
+            # ==================== METRICS ====================
+            p_col1, p_col2, p_col3, p_col4 = st.columns(4)
 
-            c1, c2, c3, c4 = st.columns(4)
-
-            c1.metric(
+            p_col1.metric(
                 "Initial Capital",
-                f"${INITIAL_CAPITAL:,.2f}"
+                f"{INITIAL_CAPITAL:,.2f}"
             )
 
-            c2.metric(
+            p_col2.metric(
                 "Final Capital",
-                f"${cash:,.2f}"
+                f"{cash:,.2f}"
             )
 
-            c3.metric(
+            p_col3.metric(
                 "Total Profit",
-                f"${total_profit:,.2f}"
+                f"{total_profit:,.2f}"
             )
 
-            c4.metric(
+            p_col4.metric(
                 "ROI %",
                 f"{roi:.2f}%"
             )
@@ -671,7 +790,17 @@ elif run_backtest_button and uploaded_files:
                 f"Max Drawdown: {max_drawdown:.2%}"
             )
 
-            # Equity Curve
+            executed_df['Buy Year'] = (
+                pd.to_datetime(executed_df['Buy Date'])
+                .dt.year
+            )
+
+            executed_df['Buy Month'] = (
+                pd.to_datetime(executed_df['Buy Date'])
+                .dt.month
+            )
+
+            # ==================== EQUITY CURVE ====================
             st.subheader("📈 Equity Curve")
 
             fig_eq, ax_eq = plt.subplots(figsize=(14, 5))
@@ -681,16 +810,60 @@ elif run_backtest_button and uploaded_files:
                 executed_df['Equity']
             )
 
+            ax_eq.set_title('Equity Curve')
+
             ax_eq.grid(True)
 
             st.pyplot(fig_eq)
 
             plt.close(fig_eq)
 
-            # Download
-            csv_data = executed_df.to_csv(
-                index=False
-            ).encode('utf-8-sig')
+            # ==================== YEARLY STATS ====================
+            st.subheader("📆 Yearly Portfolio Stats")
+
+            yearly_stats = executed_df.groupby('Buy Year').agg({
+                'PnL': ['sum', 'mean', 'count'],
+                'Profit %': 'mean',
+                'Drawdown': 'min'
+            })
+
+            yearly_stats.columns = [
+                'Total PnL',
+                'Average PnL',
+                'Total Trades',
+                'Average Profit %',
+                'Worst Drawdown'
+            ]
+
+            st.dataframe(
+                yearly_stats,
+                use_container_width=True
+            )
+
+            # ==================== MONTHLY MATRIX ====================
+            st.subheader("📅 Monthly Trade Matrix")
+
+            monthly_trades = pd.crosstab(
+                executed_df['Buy Year'],
+                executed_df['Buy Month']
+            )
+
+            st.dataframe(
+                monthly_trades,
+                use_container_width=True
+            )
+
+            # ==================== DOWNLOAD ====================
+            download_df = executed_df.sort_values(
+                by='Buy Date',
+                kind='mergesort'
+            ).reset_index(drop=True)
+
+            csv_data = (
+                download_df
+                .to_csv(index=False)
+                .encode('utf-8-sig')
+            )
 
             st.download_button(
                 "📥 Download executed_trades.csv",
